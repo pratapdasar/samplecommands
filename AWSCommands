@@ -1,0 +1,70 @@
+# to get a list of DS instances
+aws ec2 describe-instances --output text | grep Name   |grep ds | awk '{print $NF}'
+
+# aws ec2 describe-instances --filters 'Name=tag:Name,Values=*.ds'
+# aws ec2 describe-instances --filters 'Name=tag:Cluster,Values=dsclusterprod1' --output text | grep -w Name
+
+aws ec2 describe-instances --filters 'Name=tag:Cluster,Values=dsclusterprod1' --output text | grep -w Name | awk '{print $NF}' > ds.instances
+aws ec2 describe-instances --filters 'Name=tag:Cluster,Values=dsclusterstg1' --output text | grep -w Name | awk '{print $NF}' >> ds.instances
+
+## to get instanceid of instances:
+ 
+ for  instance in `cat ds.instances`; 
+ do   instance_id=$(aws ec2 describe-instances --filters "Name=tag:Name,Values=${instance}" --output text --query 'Reservations[*].Instances[*].InstanceId');   echo "${instance}, ${instance_id}"; done > ds.instances_with_ids
+
+ for i in `aws ec2 describe-instances --output text --query 'Reservations[*].Instances[*].InstanceId' --filters "Name=tag:elasticbeanstalk:environment-id,Values=e-test"`; do  echo $i; sleep 200 ;done
+
+## create image of existing instances
+
+timeStamp=$(date +"%Y-%m-%e_%H-%M-%S")
+while IFS=,; read instance_name instance_id; do 
+#aws ec2 create-image --instance-id ${instance_id} --name ${instance_name}_${timeStamp} --no-reboot
+echo aws ec2 create-image --instance-id ${instance_id} --name ${instance_name}_${timeStamp} --no-reboot
+done < ds.instances_with_ids
+
+Assuming that you are using the convention of putting the name of the instance in a tag with the key of "Name" (this is what the AWS Console does when you enter a name), then you can use the --filters option to list those instances with aws-cli:
+
+aws ec2 describe-instances --filters 'Name=tag:Name,Values=dev-server-*'
+If you just wanted the instance ids of those instances, you could use:
+
+aws ec2 describe-instances --filters 'Name=tag:Name,Values=dev-server-*' \
+  --output text --query 'Reservations[*].Instances[*].InstanceId'
+Note: --query may require a recent version of aws-cli but it's worth getting.
+
+### jq example
+[root@control ~]# aws ec2 describe-instances --filters 'Name=tag:Name,Values=n1.ds'   | jq '.Reservations[].OwnerId'
+
+========
+
+[root@control ~]# cat this.txt  |jq '.Reservations[].Instances[].Tags'
+[
+  {
+    "Value": "n1.ds",
+    "Key": "Name"
+  },
+  {
+    "Value": "Goll",
+    "Key": "CreatedBy"
+  },
+  {
+    "Value": "Analytics/DS",
+    "Key": "Team"
+  },
+  {
+    "Value": "dsclusterprod1",
+    "Key": "Cluster"
+  }
+]
+[root@control ~]# cat this.txt  |jq '.Reservations[].Instances[].Tags | map(select(.Key == "Name"))'
+[
+  {
+    "Value": "n1.ds",
+    "Key": "Name"
+  }
+
+=====
+ aws ec2 describe-instances --filter Name=tag:Cluster,Values=dsclusterprod1 | jq '.Reservations[].Instances[].Tags[]| select (.["Key"] == "CreatedBy")|.Value'
+  
+ aws ec2 describe-instances --filter Name=tag:Cluster,Values=dsclusterprod1 | jq '.Reservations[].Instances[].Tags[] | select(.Key == "Name")| .Value' | sed 's/"//g'
+
+ aws ec2 describe-instances --filter "Name=instance-state-name,Values=running" "Name=tag-key,Values=Name" "Name=tag-value,Values=*email*"
